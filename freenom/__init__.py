@@ -6,6 +6,7 @@
 :copyright: ©2020 Punk Lee <punklee333@gmail.com>
 """
 import requests, os, json
+from sys import exit
 from lxml.html import etree
 from retrying import retry
 from datetime import datetime
@@ -19,10 +20,27 @@ def secure_retry(f):
         try:
             return f(*args, **kwargs)
         except Exception as e:
-            print(e.args)
-            return False
+            print(e)
+            exit()
 
     return inner
+
+
+def _retry_on_exception(e):
+    _retry = isinstance(e, (requests.ConnectTimeout,
+                            requests.ReadTimeout))
+    if not _retry:
+        print(e)
+        exit()
+    return _retry
+
+
+dkw = {
+    'stop_max_attempt_number': 3,
+    'wait_random_min': 2000,
+    'wait_random_max': 6000,
+    'retry_on_exception': _retry_on_exception
+}
 
 
 class Freenom:
@@ -59,21 +77,27 @@ class Freenom:
         self.timeout = kwargs.get('timeout', 22)
         self.saveHtml = kwargs.get('saveHtml', False)
 
-        # is loggedIn?
-        if not self._loggedIn():
-            self.doLogin()
+        self._RequireData()
 
     @secure_retry
-    @retry(stop_max_attempt_number=3, wait_random_min=2000, wait_random_max=6000)
+    @retry(**dkw)
     def _request(self, req, url, **kwargs):
-        print('*', end='')
         kwargs = {
             'data': kwargs.get('data', {}),
             'timeout': kwargs.get('timeout', self.timeout),
             'headers': kwargs.get('headers', self.headers)
         }
         # send request
-        return req(url, **kwargs)
+        res = req(url, **kwargs)
+
+        # is loggedIn?
+        loggedIn = self._parse(res.content.decode(), '//body/@class')[0]
+        if not 'loggedIn' in loggedIn:
+            self.token = self._parse(res.content.decode(), '//input[@name="token"]/@value')[0]
+            self.doLogin()
+            raise requests.ConnectTimeout
+
+        return res
 
     def _saveHtml(self, html_text, filename='res'):
         if self.saveHtml:
@@ -107,8 +131,6 @@ class Freenom:
 
     def _RequireData(self):
         """Cache all domain and domain_id to local"""
-        print('cacheData:', end=' ')
-
         domains_data = {}
         url = "https://my.freenom.com/clientarea.php?action=domains"
         res = self._request(self.session.get, url)
@@ -120,8 +142,9 @@ class Freenom:
             id = [i.split('=')[-1] for i in href[:]]
             domains_data = dict(zip(domains, id))
         # Save as local file
-        with open(self._data_path, 'w', encoding='utf-8') as f:
-            f.write(json.dumps(domains_data))
+        f = open(self._data_path, 'w', encoding='utf-8')
+        f.write(json.dumps(domains_data))
+        f.close()
 
         return domains_data
 
@@ -146,40 +169,6 @@ class Freenom:
 
         return data
 
-    def _loggedIn(self):
-        print('LoggedIn:', end=' ')
-        url = 'https://my.freenom.com/clientarea.php'
-
-        res = self._request(self.session.get, url)
-        loggedIn = self._parse(res.content.decode(), '//body/@class')[0]
-        ret = 'loggedIn' in loggedIn
-        print(ret)
-        if not ret:
-            print('GetToken:', end=' ')
-            self.token = self._parse(res.content.decode(), '//input[@name="token"]/@value')[0]
-            print(self.token)
-
-        return ret
-
-    def doLogin(self, username=None, password=None):
-        print('doLogin:', end=' ')
-
-        url = 'https://my.freenom.com/dologin.php'
-        form_data = {
-            'token': self.token if self.token else '',
-            'username': username if username else self.username,
-            'password': password if password else self.password
-        }
-
-        # send request and save cookies as local
-        res = self._request(self.session.post, url, data=form_data)
-        if res.url.find('incorrect=true') != -1:
-            print(self._parse(res.content.decode(), '//div[contains(@class,"error-message")]/p/text()')[0])
-            exit()
-        else:
-            self.session.cookies.save(ignore_discard=True, ignore_expires=True)
-            print('Login successfully.')
-
     def _isAddRecord(self, records, name):
         # No records
         if not records:
@@ -193,11 +182,37 @@ class Freenom:
 
     def _showDnsResult(self, html_text, xpath_list):
         # show dns result
+        if not html_text:
+            print('no html text')
+            return
         for xpath in xpath_list:
             dns_res = self._parse(html_text, xpath)
             if dns_res:
                 print(dns_res[0])
-                break
+                return
+        print('cannot find dns result')
+        return
+
+    @secure_retry
+    @retry(**dkw)
+    def doLogin(self, username=None, password=None):
+        print('doLogin:', end=' ')
+
+        url = 'https://my.freenom.com/dologin.php'
+        form_data = {
+            'token': self.token if self.token else '',
+            'username': username if username else self.username,
+            'password': password if password else self.password
+        }
+
+        # send request and save cookies as local
+        res = self.session.post(url, data=form_data)
+        if res.url.find('incorrect=true') != -1:
+            print(self._parse(res.content.decode(), '//div[contains(@class,"error-message")]/p/text()')[0])
+            exit()
+        else:
+            self.session.cookies.save(ignore_discard=True, ignore_expires=True)
+            print('Login successfully.')
 
     def setRecord(self, domain, name, type, target, ttl='3600'):
         """
@@ -215,6 +230,9 @@ class Freenom:
         """
         data = self._getData()
         print('setRecord:', end=' ')
+        if not domain in data:
+            print('No data found for this domain')
+            return
 
         # init params
         url = 'https://my.freenom.com/clientarea.php?managedns=%s&domainid=%s'
@@ -223,7 +241,7 @@ class Freenom:
         ttl = str(ttl)
         target = str(target)
         # add or modify?
-        records = self._getRecordList(domain, data[domain])
+        records = self._getRecordList(domain, data.get(domain))
         if self._isAddRecord(records, name):
             # add
             form_data = {
@@ -250,11 +268,11 @@ class Freenom:
                 form_data[f'records[{i}][value]'] = records[i][3]
 
         # send request
-        res = self._request(self.session.post, url % (domain, data[domain]), data=form_data)
+        res = self._request(self.session.post, url % (domain, data.get(domain)), data=form_data)
         # show dns result
-        if res:
-            self._showDnsResult(res.content.decode(),
-                                ['//div[@class="recordslist"]/ul/li/text()', '//section[@class="domainContent"]//p'])
+        self._showDnsResult(res.content.decode(),
+                            ['//div[@class="recordslist"]/ul/li/text()',
+                             '//section[@class="domainContent"]//p/text()'])
 
     def delRecord(self, domain, name, type='', target='', ttl='3600'):
         """
@@ -272,6 +290,9 @@ class Freenom:
         """
         data = self._getData()
         print('delRecord:', end=' ')
+        if not domain in data:
+            print('No data found for this domain')
+            return
 
         # init params
         url = 'https://my.freenom.com/clientarea.php?' \
@@ -298,27 +319,32 @@ class Freenom:
             # send request
             res = self._request(self.session.get, url.format(domain, type, name, target, ttl, domainid))
             # show dns result
-            if res:
-                self._showDnsResult(res.content.decode(),
-                                    ['//div[@class="recordslist"]/ul/li/text()',
-                                     '//section[@class="domainContent"]//p'])
+            # show dns result
+            self._showDnsResult(res.content.decode(),
+                                ['//div[@class="recordslist"]/ul/li/text()',
+                                 '//section[@class="domainContent"]//p/text()'])
         else:
             print('no records to delete')
 
     def showRecords(self, domain):
         data = self._getData()
+        if not domain in data:
+            print('No data found for this domain')
+            return
+
         records = self._getRecordList(domain, data.get(domain, ''))
-        print()
-        print(f'{"-" * 19}showRecords{"-" * 19}')
+        print(f'{domain:-^38}')
         if records:
             for record in records:
                 print(record)
         else:
-            print(f'{"-" * 14}No records to display{"-" * 14}')
+            print(f'{"No records to display":-^38}')
 
+    @secure_retry
+    @retry(**dkw)
     def getPublicIP(self, url='https://api.ipify.org'):
-        print(f'PublicIP:', end=' ')
-        res = self._request(requests.get, url, headers={})
+        print('PublicIP:', end=' ')
+        res = requests.get(url, timeout=self.timeout)
         pub_ip = res.content.decode()
         print(pub_ip)
         return pub_ip

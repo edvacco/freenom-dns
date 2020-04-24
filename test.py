@@ -2,16 +2,19 @@
 from freenom import Freenom
 
 if __name__ == '__main__':
-    freenom = Freenom('your username', 'your password')
+    freenom = Freenom('18683833822@163.com', '496709219')
     ###################################################
     pub_ip = freenom.getPublicIP()
 
     # add or modify a record
-    freenom.setRecord('xxx.tk', '', 'a', pub_ip)
-    freenom.setRecord('xxx.tk', 'www', 'a', pub_ip)
+    freenom.setRecord('wagger2.ga', '', 'a', pub_ip)
+    freenom.setRecord('wagger2.ga', 'www', 'a', pub_ip)
+    freenom.setRecord('wagger2.ga', 'asd', 'a', '192.168.123.111')
 
     # delete a record
-    freenom.delRecord('xxx.tk', 'www')
+    freenom.delRecord('wagger2.ga', 'asd')
 
     # show all records with domain
-    freenom.showRecords('xxx.tk')
+    freenom.showRecords('wagger2.ga')
+
+
