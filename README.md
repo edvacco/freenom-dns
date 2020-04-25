@@ -6,7 +6,7 @@ An unofficial python implementation for managing freenom.com dns records.
 Freenom is the world's first and only free domain provider.
 ## Install
 ```
-pipenv install
+pip install git+https://github.com/Shm013/freenom-dns.git
 ```
 ## How to use
 ```python
