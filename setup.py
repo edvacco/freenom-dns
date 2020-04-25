@@ -3,6 +3,12 @@ import setuptools
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+install_requires = [
+    "requests>=2.23.0",
+    "lxml>=4.5.0",
+    "retrying>=1.3.3",
+]
+
 setuptools.setup(
     name="freenom", # Replace with your own username
     version="0.0.1",
@@ -19,4 +25,5 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
+    install_requires=install_requires,
 )
