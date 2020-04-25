@@ -14,7 +14,7 @@ setuptools.setup(
     version="0.0.1",
     author="Nikolay Shamanovich",
     author_email="shm013@yandex.ru",
-    description="Freenom DMS API",
+    description="Freenom DNS API",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Shm013/freenom-dns",
