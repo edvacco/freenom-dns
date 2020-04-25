@@ -3,3 +3,4 @@ __pycache__
 venv/
 cookies_data
 freenom_data
+*.sw?
