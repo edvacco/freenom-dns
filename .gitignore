@@ -4,3 +4,6 @@ venv/
 cookies_data
 freenom_data
 *.sw?
+build/
+dist/
+freenom.egg-info/
