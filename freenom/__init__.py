@@ -273,6 +273,35 @@ class Freenom:
         self._showDnsResult(res.content.decode(),
                             ['//div[@class="recordslist"]/ul/li/text()',
                              '//section[@class="domainContent"]//p/text()'])
+        
+   def setNameservers(self, domain, ns1, ns2):
+        """
+        add or modify record
+        :param domain: <xxx.ga>
+        :param ns1: <ns1>
+        :param ns2: <ns2>
+        """
+        data = self._getData()
+        domainid = data.get(domain, '')        
+        
+        # init params                 
+        url = 'https://my.freenom.com/clientarea.php?action=domaindetails&id='+domainid
+        print('Url:'+url)
+        form_data = {
+                'token': '',
+                'nschoice': 'custom',
+                'ns1': ns1,
+                'ns2': ns2,
+                'sub': 'savens',
+            }
+  
+
+        # send request
+        res = self._request(self.session.post, url, data=form_data)
+        # show dns result
+        self._showDnsResult(res.content.decode(),
+                            ['//div[contains(@class,"errorMessages")]/p/text()',
+                             '//section[@class="domainContent"]//p/text()'])        
 
     def delRecord(self, domain, name, type='', target='', ttl='3600'):
         """
